@@ -78,9 +78,34 @@ func (h *Handler) resolveURL(url string) (string, func(), error) {
 	return h.downloadDirect(url)
 }
 
-func (h *Handler) downloadDirect(url string) (string, func(), error) {
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "whisper-lrc-*.mp3")
+func (h *Handler) downloadDirect(inputURL string) (string, func(), error) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get(inputURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", nil, fmt.Errorf("download failed with status: %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "text/html") {
+		return "", nil, fmt.Errorf("URL returned HTML instead of audio (possibly a redirect to error page)")
+	}
+
+	ext := getAudioExtension(resp)
+
+	tmpFile, err := os.CreateTemp("", "whisper-lrc-*"+ext)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
@@ -88,19 +113,6 @@ func (h *Handler) downloadDirect(url string) (string, func(), error) {
 
 	cleanup := func() {
 		os.Remove(tmpPath)
-	}
-
-	// Download
-	resp, err := http.Get(url)
-	if err != nil {
-		cleanup()
-		return "", nil, fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		cleanup()
-		return "", nil, fmt.Errorf("download failed with status: %d", resp.StatusCode)
 	}
 
 	_, err = io.Copy(tmpFile, resp.Body)
@@ -111,6 +123,60 @@ func (h *Handler) downloadDirect(url string) (string, func(), error) {
 	}
 
 	return tmpPath, cleanup, nil
+}
+
+// getAudioExtension determines the audio file extension from HTTP response
+func getAudioExtension(resp *http.Response) string {
+	// Map Content-Type to extension
+	contentTypeMap := map[string]string{
+		"audio/mpeg":               ".mp3",
+		"audio/mp3":                ".mp3",
+		"audio/wav":                ".wav",
+		"audio/x-wav":              ".wav",
+		"audio/wave":               ".wav",
+		"audio/mp4":                ".m4a",
+		"audio/x-m4a":              ".m4a",
+		"audio/m4a":                ".m4a",
+		"audio/aac":                ".m4a",
+		"audio/flac":               ".flac",
+		"audio/x-flac":             ".flac",
+		"audio/ogg":                ".ogg",
+		"audio/webm":               ".webm",
+		"video/mp4":                ".mp4",
+		"video/webm":               ".webm",
+		"application/ogg":          ".ogg",
+		"application/octet-stream": "", // Will fallback to URL check
+	}
+
+	// Try Content-Type first
+	contentType := resp.Header.Get("Content-Type")
+	// Strip charset or other parameters
+	if idx := strings.Index(contentType, ";"); idx != -1 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+
+	if ext, ok := contentTypeMap[contentType]; ok && ext != "" {
+		return ext
+	}
+
+	// Fallback: check final URL after redirects
+	finalURL := resp.Request.URL.String()
+	urlPath := resp.Request.URL.Path
+
+	// Check for extension in URL path
+	for ext := range supportedExtensions {
+		if strings.HasSuffix(strings.ToLower(urlPath), ext) {
+			return ext
+		}
+		// Also check if extension appears before query params
+		if strings.Contains(strings.ToLower(finalURL), ext+"?") ||
+			strings.Contains(strings.ToLower(finalURL), ext+"&") {
+			return ext
+		}
+	}
+
+	// Default to mp3
+	return ".mp3"
 }
 
 func (h *Handler) downloadWithYtDlp(url string) (string, func(), error) {
