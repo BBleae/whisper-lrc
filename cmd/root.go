@@ -18,6 +18,7 @@ var (
 	outputDir    string
 	language     string
 	apiKey       string
+	prompt       string
 	useYtDlp     bool
 	verbose      bool
 )
@@ -57,6 +58,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&outputDir, "output", "o", "", "Output directory (default: same as input)")
 	rootCmd.Flags().StringVarP(&language, "language", "l", "", "Language code (e.g., en, zh, ja). Auto-detect if not specified")
 	rootCmd.Flags().StringVar(&apiKey, "api-key", "", "OpenAI API key (or set OPENAI_API_KEY env)")
+	rootCmd.Flags().StringVarP(&prompt, "prompt", "p", "", "Custom prompt for Whisper (overrides default anti-hallucination prompt)")
 	rootCmd.Flags().BoolVar(&useYtDlp, "yt-dlp", false, "Use yt-dlp for YouTube/video URLs")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 }
@@ -105,9 +107,12 @@ func runExtract(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Transcribe with Whisper
 		tracker.SetStatus("Transcribing...")
-		result, err := client.Transcribe(audioPath, language)
+		effectivePrompt := prompt
+		if effectivePrompt == "" {
+			effectivePrompt = whisper.DefaultPrompt
+		}
+		result, err := client.Transcribe(audioPath, language, effectivePrompt)
 		if err != nil {
 			if cleanup != nil {
 				cleanup()

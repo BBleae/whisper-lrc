@@ -13,6 +13,8 @@ import (
 
 const apiURL = "https://api.openai.com/v1/audio/transcriptions"
 
+const DefaultPrompt = `Transcribe only the actual sung or spoken lyrics. Do not add metadata such as composer, lyricist, arranger, artist names, song titles, or credits. If there is silence or instrumental sections, output nothing for those parts.`
+
 // Segment represents a transcribed segment with timing
 type Segment struct {
 	Start float64 `json:"start"`
@@ -42,7 +44,7 @@ func NewClient(apiKey string) *Client {
 }
 
 // Transcribe sends an audio file to Whisper API and returns the result
-func (c *Client) Transcribe(audioPath string, language string) (*TranscriptionResult, error) {
+func (c *Client) Transcribe(audioPath string, language string, prompt string) (*TranscriptionResult, error) {
 	file, err := os.Open(audioPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open audio file: %w", err)
@@ -77,10 +79,15 @@ func (c *Client) Transcribe(audioPath string, language string) (*TranscriptionRe
 		return nil, fmt.Errorf("failed to write timestamp_granularities field: %w", err)
 	}
 
-	// Add language if specified
 	if language != "" {
 		if err := writer.WriteField("language", language); err != nil {
 			return nil, fmt.Errorf("failed to write language field: %w", err)
+		}
+	}
+
+	if prompt != "" {
+		if err := writer.WriteField("prompt", prompt); err != nil {
+			return nil, fmt.Errorf("failed to write prompt field: %w", err)
 		}
 	}
 
