@@ -6,6 +6,8 @@
 
 Extract synchronized lyrics from audio files using OpenAI's Whisper API.
 
+> **Note**: This is my first pure Vibe Coding project, created to try out [OpenCode](https://github.com/opencode-ai/opencode) and [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode).
+
 ## Features
 
 - **Multiple input sources**: Local files, direct URLs, YouTube (via yt-dlp)
