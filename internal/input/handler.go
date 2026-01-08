@@ -24,7 +24,6 @@ var supportedExtensions = map[string]bool{
 // Handler resolves various input sources to local audio files
 type Handler struct {
 	useYtDlp bool
-	tempDir  string
 }
 
 // NewHandler creates a new input handler
